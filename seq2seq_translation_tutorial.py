@@ -147,6 +147,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 SOS_token = 0
 EOS_token = 1
 
+# this code for vocabulary
 class Lang:
     def __init__(self, name):
         self.name = name
@@ -179,14 +180,17 @@ class Lang:
 # https://stackoverflow.com/a/518232/2809427
 def unicodeToAscii(s):
     return ''.join(
-        c for c in unicodedata.normalize('NFD', s)
-        if unicodedata.category(c) != 'Mn'
+        c for c in unicodedata.normalize('NFD', s) # 将unicode字符串转换为NFD规范，也就是一些组合符号被拆分出来
+        if unicodedata.category(c) != 'Mn' # 把所有的重音符号去掉
     )
+
+# import pdb
+# pdb.set_trace()
 
 # Lowercase, trim, and remove non-letter characters
 def normalizeString(s):
     s = unicodeToAscii(s.lower().strip())
-    s = re.sub(r"([.!?])", r" \1", s)
+    s = re.sub(r"([.!?])", r" \1", s) # 在句号、问号、感叹号前加空格，\1表示匹配到的第一个分组
     s = re.sub(r"[^a-zA-Z!?]+", r" ", s)
     return s.strip()
 
@@ -204,13 +208,18 @@ def readLangs(lang1, lang2, reverse=False):
     # Read the file and split into lines
     lines = open('data/%s-%s.txt' % (lang1, lang2), encoding='utf-8').\
         read().strip().split('\n')
+    
+    # print('one lines:', lines[0])
+
+    # import pdb
+    # pdb.set_trace()
 
     # Split every line into pairs and normalize
-    pairs = [[normalizeString(s) for s in l.split('\t')] for l in lines]
+    pairs = [[normalizeString(s) for s in l.split('\t')] for l in lines] # List:[List]
 
     # Reverse pairs, make Lang instances
     if reverse:
-        pairs = [list(reversed(p)) for p in pairs]
+        pairs = [list(reversed(p)) for p in pairs] # 反转pairs
         input_lang = Lang(lang2)
         output_lang = Lang(lang1)
     else:
@@ -231,6 +240,7 @@ def readLangs(lang1, lang2, reverse=False):
 
 MAX_LENGTH = 10
 
+# 因为前面在处理token的时候把'替换成空格了
 eng_prefixes = (
     "i am ", "i m ",
     "he is", "he s ",
@@ -240,10 +250,11 @@ eng_prefixes = (
     "they are", "they re "
 )
 
+# 选出sentence长度小于MAX_LENGTH并且以eng_prefixes中的词开头的pair
 def filterPair(p):
     return len(p[0].split(' ')) < MAX_LENGTH and \
         len(p[1].split(' ')) < MAX_LENGTH and \
-        p[1].startswith(eng_prefixes)
+        p[1].startswith(eng_prefixes) # 是否以eng_prefixes中的词开头
 
 
 def filterPairs(pairs):
@@ -259,11 +270,12 @@ def filterPairs(pairs):
 #
 
 def prepareData(lang1, lang2, reverse=False):
-    input_lang, output_lang, pairs = readLangs(lang1, lang2, reverse)
+    input_lang, output_lang, pairs = readLangs(lang1, lang2, reverse) # pairs每个元素是一个list，list中有两个元素，分别是input和output
     print("Read %s sentence pairs" % len(pairs))
     pairs = filterPairs(pairs)
     print("Trimmed to %s sentence pairs" % len(pairs))
     print("Counting words...")
+    # 得到的为以end_prefixes开头的pair
     for pair in pairs:
         input_lang.addSentence(pair[0])
         output_lang.addSentence(pair[1])
@@ -377,7 +389,7 @@ class DecoderRNN(nn.Module):
 
     def forward(self, encoder_outputs, encoder_hidden, target_tensor=None):
         batch_size = encoder_outputs.size(0)
-        decoder_input = torch.empty(batch_size, 1, dtype=torch.long, device=device).fill_(SOS_token)
+        decoder_input = torch.empty(batch_size, 1, dtype=torch.long, device=device).fill_(SOS_token) # index 0
         decoder_hidden = encoder_hidden
         decoder_outputs = []
 
@@ -397,7 +409,7 @@ class DecoderRNN(nn.Module):
         decoder_outputs = F.log_softmax(decoder_outputs, dim=-1)
         return decoder_outputs, decoder_hidden, None # We return `None` for consistency in the training loop
 
-    def forward_step(self, input, hidden):
+    def forward_step(self, input, hidden): # hidden为encoder的hidden
         output = self.embedding(input)
         output = F.relu(output)
         output, hidden = self.gru(output, hidden)
@@ -574,7 +586,10 @@ def get_dataloader(batch_size):
                                torch.LongTensor(target_ids).to(device))
 
     train_sampler = RandomSampler(train_data)
+    import pdb
+    pdb.set_trace()
     train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=batch_size)
+
     return input_lang, output_lang, train_dataloader
 
 
@@ -612,7 +627,7 @@ def train_epoch(dataloader, encoder, decoder, encoder_optimizer,
     for data in dataloader:
         input_tensor, target_tensor = data
 
-        encoder_optimizer.zero_grad()
+        encoder_optimizer.zero_grad() # 将梯度清零，不然backward的时候会叠加之前的梯度
         decoder_optimizer.zero_grad()
 
         encoder_outputs, encoder_hidden = encoder(input_tensor)
